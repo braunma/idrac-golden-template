@@ -10,7 +10,7 @@
 #   IDRAC_GROUP         - Target a specific server group (default: all groups)
 #   IDRAC_SOURCE_IP     - Source iDRAC IP           (legacy mode only)
 #   IDRAC_TARGET_IPS    - Comma-separated targets   (legacy mode only)
-#   CI_PUSH_TOKEN       - Project access token with write_repository scope;
+#   GL_TOKEN            - Project access token with write_repository scope;
 #                         required only when pipeline.commit_exports: true
 #
 # Pipeline stages:
@@ -202,8 +202,8 @@ except Exception:
 ")
       if [ "$COMMIT_EXPORTS" = "true" ]; then
         echo "--- Auto-committing exported templates ---"
-        if [ -z "$CI_PUSH_TOKEN" ]; then
-          echo "ERROR: CI_PUSH_TOKEN is not set. Add a project access token with"
+        if [ -z "$GL_TOKEN" ]; then
+          echo "ERROR: GL_TOKEN is not set. Add a project access token with"
           echo "       write_repository scope as a masked CI/CD variable."
           exit 1
         fi
@@ -215,7 +215,7 @@ except Exception:
         else
           git commit -m "ci: export golden templates [pipeline #${CI_PIPELINE_ID}]"
           git push \
-            "https://oauth2:${CI_PUSH_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" \
+            "https://oauth2:${GL_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" \
             "HEAD:${CI_COMMIT_REF_NAME}"
           echo "Templates committed and pushed."
         fi
