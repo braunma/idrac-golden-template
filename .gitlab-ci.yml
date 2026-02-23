@@ -44,6 +44,7 @@ default:
       echo "Branch: $CI_COMMIT_REF_NAME"
       echo "Runner: $CI_RUNNER_DESCRIPTION"
       echo "==========================================="
+      apt-get update && apt-get install -y git
       pip install --quiet -r requirements.txt
   cache:
     key: "$CI_COMMIT_REF_SLUG"
