@@ -131,11 +131,41 @@ def _extract_scp_content(task_data: dict, export_format: str) -> str:
         if export_format.upper() == "JSON" and content.strip().startswith("{"):
             return content
 
-    # Last resort: look at the raw task data for SystemConfiguration
+    # Top-level key: Dell iDRAC9 local export often places the SCP directly
+    # under "SystemConfiguration" (XML) or "SystemConfigurationProfile" (JSON)
+    # at the root of the task response body.
+    if export_format.upper() == "JSON":
+        for key in ("SystemConfigurationProfile", "SystemConfiguration"):
+            if key in task_data:
+                return json.dumps(task_data[key], indent=2)
+    else:
+        for key in ("SystemConfiguration", "SystemConfigurationProfile"):
+            if key in task_data:
+                value = task_data[key]
+                return value if isinstance(value, str) else json.dumps(value)
+
+    # Last resort: regex scan of the raw serialised task data
     raw = json.dumps(task_data)
     if export_format.upper() == "XML":
         match = re.search(r"(<SystemConfiguration.*</SystemConfiguration>)", raw, re.DOTALL)
         if match:
             return match.group(1)
+    else:
+        match = re.search(r'("SystemConfiguration(?:Profile)?"\s*:\s*\{)', raw)
+        if match:
+            # Walk forward from the opening brace to find the matching close brace
+            start = raw.index("{", match.start())
+            depth, i = 0, start
+            for i, ch in enumerate(raw[start:], start):
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        break
+            try:
+                return json.dumps(json.loads(raw[start: i + 1]), indent=2)
+            except json.JSONDecodeError:
+                pass
 
     return ""
