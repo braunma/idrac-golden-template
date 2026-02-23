@@ -107,5 +107,5 @@ pipeline:
   # changing steps to [import].
   #
   # Requires a GitLab project access token with write_repository scope stored as
-  # the CI_PUSH_TOKEN variable (Settings → CI/CD → Variables, masked + protected).
+  # the GL_TOKEN variable (Settings → CI/CD → Variables, masked + protected).
   commit_exports: false
