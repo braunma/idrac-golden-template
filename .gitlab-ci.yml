@@ -1,0 +1,133 @@
+# =============================================================================
+# iDRAC Golden Template — GitLab CI/CD Pipeline
+# =============================================================================
+#
+# Required CI/CD Variables (Settings → CI/CD → Variables):
+#   IDRAC_USERNAME      - iDRAC username           (masked)
+#   IDRAC_PASSWORD      - iDRAC password           (masked, protected)
+#   IDRAC_SOURCE_IP     - Source iDRAC IP address   (optional, overrides config)
+#   IDRAC_TARGET_IPS    - Comma-separated targets   (optional, overrides config)
+#
+# Pipeline stages:
+#   1. validate   — lint + connectivity check
+#   2. export     — export golden template from source iDRAC
+#   3. import     — apply template to target iDRACs (manual trigger)
+# =============================================================================
+
+stages:
+  - validate
+  - export
+  - import
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+  IDRAC_CONFIG_FILE: "config.yaml"
+
+default:
+  image: python:3.11-slim
+  before_script:
+    - echo "=========================================="
+    - echo "Job       ∶ $CI_JOB_NAME"
+    - echo "Pipeline  ∶ $CI_PIPELINE_ID"
+    - echo "Branch    ∶ $CI_COMMIT_REF_NAME"
+    - echo "Runner    ∶ $CI_RUNNER_DESCRIPTION"
+    - echo "=========================================="
+    - pip install --quiet -r requirements.txt
+  cache:
+    key: "$CI_COMMIT_REF_SLUG"
+    paths:
+      - .pip-cache/
+
+# ---------------------------------------------------------------------------
+# Stage 1: Validate
+# ---------------------------------------------------------------------------
+
+lint:
+  stage: validate
+  script:
+    - echo "--- Python syntax check ---"
+    - python -m py_compile main.py
+    - python -m py_compile src/idrac_common.py
+    - python -m py_compile src/export_scp.py
+    - python -m py_compile src/import_scp.py
+    - echo "--- All files compile OK ---"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+
+validate_connectivity:
+  stage: validate
+  script:
+    - echo "--- Validating iDRAC connectivity ---"
+    - python main.py --verbose validate
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
+      allow_failure: true
+    - if: $CI_COMMIT_BRANCH
+      when: manual
+      allow_failure: true
+
+# ---------------------------------------------------------------------------
+# Stage 2: Export golden template
+# ---------------------------------------------------------------------------
+
+export_template:
+  stage: export
+  script:
+    - echo "--- Exporting golden template from source iDRAC ---"
+    - python main.py --verbose export
+    - echo "--- Listing exported files ---"
+    - ls -lh templates/
+  artifacts:
+    paths:
+      - templates/
+    expire_in: 30 days
+    name: "golden-template-${CI_PIPELINE_ID}"
+  rules:
+    - if: $CI_COMMIT_BRANCH
+      when: manual
+
+# ---------------------------------------------------------------------------
+# Stage 3: Import template to targets
+# ---------------------------------------------------------------------------
+
+import_template:
+  stage: import
+  needs:
+    - job: export_template
+      artifacts: true
+  script:
+    - echo "--- Importing golden template to target iDRACs ---"
+    - |
+      # Find the most recent exported template
+      TEMPLATE_FILE=$(ls -t templates/scp_*.xml templates/scp_*.json 2>/dev/null | head -1)
+      if [ -z "$TEMPLATE_FILE" ]; then
+        echo "ERROR: No exported template found in templates/"
+        exit 1
+      fi
+      echo "Using template: $TEMPLATE_FILE"
+      python main.py --verbose import "$TEMPLATE_FILE"
+  rules:
+    - if: $CI_COMMIT_BRANCH
+      when: manual
+
+# ---------------------------------------------------------------------------
+# Full apply: export + import in one step
+# ---------------------------------------------------------------------------
+
+apply_template:
+  stage: import
+  script:
+    - echo "--- Full apply: export from source, import to all targets ---"
+    - python main.py --verbose apply
+    - echo "--- Listing exported files ---"
+    - ls -lh templates/
+  artifacts:
+    paths:
+      - templates/
+    expire_in: 30 days
+    name: "golden-template-applied-${CI_PIPELINE_ID}"
+  rules:
+    - if: $CI_COMMIT_BRANCH
+      when: manual

@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Exported templates (real data - never commit)
+templates/*.xml
+templates/*.json
+
+# Secrets
+.env
+*.env
+credentials.*
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,48 @@
+# iDRAC Golden Template Configuration
+# =====================================
+# Copy this file to config.yaml and fill in your values.
+# In GitLab CI/CD, credentials are injected via pipeline variables:
+#   IDRAC_USERNAME, IDRAC_PASSWORD, IDRAC_SOURCE_IP, IDRAC_TARGET_IPS
+
+# Source iDRAC - the machine to export the golden configuration from.
+source:
+  ip: "192.168.1.100"
+
+# Target iDRACs - machines that will receive the golden configuration.
+# Supports individual IPs and CIDR-style ranges.
+# Examples:
+#   - "192.168.1.101"
+#   - "192.168.1.110-192.168.1.120"
+targets:
+  - "192.168.1.101"
+  - "192.168.1.102"
+  # - "192.168.1.110-192.168.1.120"
+
+# Export settings
+export:
+  # Components to export: ALL, BIOS, IDRAC, NIC, RAID, FC, LifecycleController
+  target: "ALL"
+  # Output format: XML or JSON
+  format: "XML"
+  # Include options (comma-separated): Default, IncludeReadOnly, IncludePasswordHashValues
+  include: "Default"
+
+# Import settings
+import:
+  # Shutdown type: Graceful, Forced, NoReboot
+  shutdown_type: "Graceful"
+  # Host power state after import: On, Off
+  host_power_state: "On"
+
+# Connection settings
+connection:
+  # Disable SSL certificate verification (typical for self-signed iDRAC certs)
+  verify_ssl: false
+  # Request timeout in seconds
+  timeout: 30
+  # Number of retries on transient failures
+  retries: 3
+  # Seconds between job status polls
+  poll_interval: 15
+  # Maximum seconds to wait for a job to complete
+  job_timeout: 1800
