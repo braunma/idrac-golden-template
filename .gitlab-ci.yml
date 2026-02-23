@@ -12,6 +12,9 @@
 #   IDRAC_TARGET_IPS    - Comma-separated targets   (legacy mode only)
 #   GL_TOKEN            - Project access token with write_repository scope;
 #                         required only when pipeline.commit_exports: true
+#   CA_Chain            - PEM-encoded CA certificate chain for your GitLab
+#                         instance (file variable); required when GitLab uses
+#                         a self-signed or private CA
 #
 # Pipeline stages:
 #   1. validate   — lint + connectivity check  (manual)
@@ -44,7 +47,12 @@ default:
       echo "Branch: $CI_COMMIT_REF_NAME"
       echo "Runner: $CI_RUNNER_DESCRIPTION"
       echo "==========================================="
-      apt-get update -qq && apt-get install -y --no-install-recommends git
+      apt-get update -qq && apt-get install -y --no-install-recommends git ca-certificates
+      if [ -n "$CA_Chain" ]; then
+        echo "--- Installing custom CA certificate ---"
+        echo "$CA_Chain" > /usr/local/share/ca-certificates/gitlab-custom-ca.crt
+        update-ca-certificates
+      fi
       pip install --quiet -r requirements.txt
   cache:
     key: "$CI_COMMIT_REF_SLUG"
