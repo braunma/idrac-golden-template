@@ -157,10 +157,18 @@ class IdracSession:
         """Poll a Redfish task until completion or timeout.
 
         Returns the final task response dict.
+
+        Note: Dell iDRAC9 (and some iDRAC8) firmware embeds the SCP payload in
+        an intermediate poll response whose TaskState is still "Unknown" or
+        "Running".  The subsequent terminal "Completed" response is a tiny
+        summary message with no configuration data.  To avoid losing the
+        payload, we cache every non-terminal response whose body exceeds 1 KB
+        and merge it into the terminal response before returning.
         """
         uri = f"{TASK_SERVICE_URI}/{job_id}"
         logger.info("  Polling job %s (interval=%ds, timeout=%ds) ...", job_id, poll_interval, job_timeout)
         start = time.time()
+        last_rich_data: dict | None = None  # intermediate response that may carry SCP payload
 
         while True:
             elapsed = time.time() - start
@@ -177,7 +185,17 @@ class IdracSession:
             logger.info("  [%s] Job %s — state: %s | %s (%.0fs elapsed)",
                         self.ip, job_id, task_state, message, elapsed)
 
+            if task_state not in ("Completed", "CompletedWithErrors", "Failed", "Exception"):
+                # Cache any substantial non-terminal response; it may contain the SCP data
+                if len(resp.content) > 1024:
+                    last_rich_data = data
+
             if task_state in ("Completed", "CompletedWithErrors", "Failed", "Exception"):
+                if last_rich_data is not None:
+                    # Merge: SCP payload keys come from the cached intermediate response;
+                    # terminal-state fields (TaskState, Messages) from the final response
+                    # take priority via the right-hand update.
+                    return {**last_rich_data, **data}
                 return data
 
             time.sleep(poll_interval)
