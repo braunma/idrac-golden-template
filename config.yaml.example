@@ -2,21 +2,50 @@
 # =====================================
 # Copy this file to config.yaml and fill in your values.
 # In GitLab CI/CD, credentials are injected via pipeline variables:
-#   IDRAC_USERNAME, IDRAC_PASSWORD, IDRAC_SOURCE_IP, IDRAC_TARGET_IPS
+#   IDRAC_USERNAME, IDRAC_PASSWORD
 
-# Source iDRAC - the machine to export the golden configuration from.
-source:
-  ip: "192.168.1.100"
+# ==========================================================================
+# Server groups
+# ==========================================================================
+# Define one or more groups. Each group has a source iDRAC to export the
+# golden template from, a stable template file path (committed to git and
+# editable), and a set of target iDRACs to apply it to.
+#
+# Workflow per group:
+#   1. Export:  python main.py export --group compute-nodes
+#              → exports SCP from source_ip, writes to "template" path
+#   2. Edit:   manually tweak the template in your repo, commit the changes
+#   3. Import: python main.py import --group compute-nodes
+#              → applies the template file to every target in that group
+#
+# You can also run all groups at once by omitting --group.
 
-# Target iDRACs - machines that will receive the golden configuration.
-# Supports individual IPs and CIDR-style ranges.
-# Examples:
+groups:
+  compute-nodes:
+    source_ip: "192.168.1.1"
+    template: "templates/compute-nodes.xml"
+    targets:
+      - "192.168.1.1-192.168.1.9"
+
+  storage-nodes:
+    source_ip: "192.168.1.17"
+    template: "templates/storage-nodes.xml"
+    targets:
+      - "192.168.1.20-192.168.1.25"
+
+# ==========================================================================
+# Legacy single-source format (still supported)
+# ==========================================================================
+# If you don't need groups, you can use the original flat format instead.
+# It behaves as a single implicit group called "default".
+#
+# source:
+#   ip: "192.168.1.100"
+#
+# targets:
 #   - "192.168.1.101"
-#   - "192.168.1.110-192.168.1.120"
-targets:
-  - "192.168.1.101"
-  - "192.168.1.102"
-  # - "192.168.1.110-192.168.1.120"
+#   - "192.168.1.102"
+#   # - "192.168.1.110-192.168.1.120"
 
 # Export settings
 export:
@@ -24,7 +53,7 @@ export:
   target: "ALL"
   # Output format: XML or JSON
   format: "XML"
-  # Include options (comma-separated): Default, IncludeReadOnly, IncludePasswordHashValues
+  # Include options: Default, IncludeReadOnly, IncludePasswordHashValues
   include: "Default"
 
 # Import settings

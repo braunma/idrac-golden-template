@@ -41,6 +41,10 @@ def suppress_insecure_warnings() -> None:
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
+# Suppress once at import time — self-signed certs are the norm for iDRAC.
+suppress_insecure_warnings()
+
+
 def expand_targets(targets: list[str]) -> list[str]:
     """Expand a list of IPs and IP ranges into individual IP addresses.
 
@@ -82,9 +86,6 @@ class IdracSession:
         self.base_url = f"https://{ip}"
         self.idrac_version: int | None = None
 
-        if not verify_ssl:
-            suppress_insecure_warnings()
-
     def _request(self, method: str, uri: str, **kwargs) -> requests.Response:
         """Execute an HTTP request with retry logic."""
         url = f"{self.base_url}{uri}"
@@ -113,9 +114,16 @@ class IdracSession:
     def post(self, uri: str, **kwargs) -> requests.Response:
         return self._request("POST", uri, **kwargs)
 
-    def check_supported(self) -> None:
-        """Verify iDRAC is reachable and supports Redfish."""
-        logger.info("  Checking iDRAC Redfish support on %s ...", self.ip)
+    def initialize(self) -> int:
+        """Verify iDRAC Redfish support and detect generation in a single request.
+
+        Returns:
+            Detected iDRAC generation (8, 9, or 10).
+        """
+        if self.idrac_version is not None:
+            return self.idrac_version
+
+        logger.info("  Connecting to iDRAC %s ...", self.ip)
         resp = self.get(MANAGERS_URI)
         if resp.status_code == 401:
             raise PermissionError(f"Authentication failed for {self.ip} - check credentials")
@@ -125,10 +133,6 @@ class IdracSession:
             )
         logger.info("  iDRAC %s is reachable (HTTP 200).", self.ip)
 
-    def detect_generation(self) -> int:
-        """Detect iDRAC generation (8, 9, or 10+) to choose correct OEM endpoint."""
-        resp = self.get(MANAGERS_URI)
-        resp.raise_for_status()
         model = resp.json().get("Model", "")
         logger.debug("  iDRAC model string: %s", model)
 
@@ -145,7 +149,7 @@ class IdracSession:
     def oem_action_uri(self, action: str) -> str:
         """Build the correct OEM action URI based on iDRAC generation."""
         if self.idrac_version is None:
-            self.detect_generation()
+            self.initialize()
         prefix = OEM_ACTIONS["v10"] if self.idrac_version >= 10 else OEM_ACTIONS["legacy"]
         return f"{MANAGERS_URI}/Actions/Oem/{prefix}.{action}"
 
