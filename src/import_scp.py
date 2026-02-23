@@ -6,7 +6,6 @@ https://github.com/dell/iDRAC-Redfish-Scripting/
 
 import logging
 import re
-import sys
 
 from src.idrac_common import IdracSession
 
@@ -30,8 +29,7 @@ def import_scp(session: IdracSession, scp_filepath: str, target: str = "ALL",
     Returns:
         True if import completed successfully, False otherwise.
     """
-    session.check_supported()
-    session.detect_generation()
+    session.initialize()
 
     logger.info("--- IMPORT SCP TO %s ---", session.ip)
     logger.info("  Source file     : %s", scp_filepath)

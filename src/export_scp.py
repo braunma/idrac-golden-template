@@ -17,7 +17,8 @@ logger = logging.getLogger("idrac")
 
 def export_scp(session: IdracSession, target: str = "ALL", export_format: str = "XML",
                include: str = "Default", output_dir: str = "templates",
-               poll_interval: int = 15, job_timeout: int = 1800) -> str:
+               output_filepath: str = "", poll_interval: int = 15,
+               job_timeout: int = 1800) -> str:
     """Export the Server Configuration Profile from a single iDRAC.
 
     Args:
@@ -25,15 +26,15 @@ def export_scp(session: IdracSession, target: str = "ALL", export_format: str = 
         target: Components to export (ALL, BIOS, IDRAC, NIC, RAID, etc.).
         export_format: XML or JSON.
         include: Export options (Default, IncludeReadOnly, IncludePasswordHashValues).
-        output_dir: Directory to write the exported file into.
+        output_dir: Directory to write the exported file into (ignored if output_filepath is set).
+        output_filepath: If set, write the SCP to this exact path instead of auto-generating.
         poll_interval: Seconds between job polls.
         job_timeout: Max seconds to wait for export job.
 
     Returns:
         Path to the exported SCP file.
     """
-    session.check_supported()
-    session.detect_generation()
+    session.initialize()
 
     uri = session.oem_action_uri("ExportSystemConfiguration")
     payload = {
@@ -83,12 +84,16 @@ def export_scp(session: IdracSession, target: str = "ALL", export_format: str = 
         raise RuntimeError(f"Export job {job_id} completed but returned no configuration data")
 
     # Write to file
-    os.makedirs(output_dir, exist_ok=True)
-    timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
-    safe_ip = session.ip.replace(".", "_")
-    ext = export_format.lower()
-    filename = f"scp_{safe_ip}_{timestamp}.{ext}"
-    filepath = os.path.join(output_dir, filename)
+    if output_filepath:
+        filepath = output_filepath
+        os.makedirs(os.path.dirname(filepath) or ".", exist_ok=True)
+    else:
+        os.makedirs(output_dir, exist_ok=True)
+        timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
+        safe_ip = session.ip.replace(".", "_")
+        ext = export_format.lower()
+        filename = f"scp_{safe_ip}_{timestamp}.{ext}"
+        filepath = os.path.join(output_dir, filename)
 
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(scp_content)

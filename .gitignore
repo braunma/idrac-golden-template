@@ -15,9 +15,11 @@ venv/
 *.swp
 *.swo
 
-# Exported templates (real data - never commit)
-templates/*.xml
-templates/*.json
+# Auto-generated exports (timestamped, never commit)
+templates/scp_*.xml
+templates/scp_*.json
+# Group template files (e.g. templates/compute-nodes.xml) are NOT ignored
+# — they should be committed and edited in the repo.
 
 # Secrets
 .env

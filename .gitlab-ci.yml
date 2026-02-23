@@ -5,12 +5,15 @@
 # Required CI/CD Variables (Settings → CI/CD → Variables):
 #   IDRAC_USERNAME      - iDRAC username           (masked)
 #   IDRAC_PASSWORD      - iDRAC password           (masked, protected)
-#   IDRAC_SOURCE_IP     - Source iDRAC IP address   (optional, overrides config)
-#   IDRAC_TARGET_IPS    - Comma-separated targets   (optional, overrides config)
+#
+# Optional CI/CD Variables:
+#   IDRAC_GROUP         - Target a specific server group (default: all groups)
+#   IDRAC_SOURCE_IP     - Source iDRAC IP           (legacy mode only)
+#   IDRAC_TARGET_IPS    - Comma-separated targets   (legacy mode only)
 #
 # Pipeline stages:
 #   1. validate   — lint + connectivity check
-#   2. export     — export golden template from source iDRAC
+#   2. export     — export golden template from source iDRAC(s)
 #   3. import     — apply template to target iDRACs (manual trigger)
 # =============================================================================
 
@@ -59,7 +62,12 @@ validate_connectivity:
   stage: validate
   script:
     - echo "--- Validating iDRAC connectivity ---"
-    - python main.py --verbose validate
+    - |
+      GROUP_FLAG=""
+      if [ -n "$IDRAC_GROUP" ]; then
+        GROUP_FLAG="--group $IDRAC_GROUP"
+      fi
+      python main.py --verbose $GROUP_FLAG validate
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       when: manual
@@ -75,8 +83,13 @@ validate_connectivity:
 export_template:
   stage: export
   script:
-    - echo "--- Exporting golden template from source iDRAC ---"
-    - python main.py --verbose export
+    - echo "--- Exporting golden template from source iDRAC(s) ---"
+    - |
+      GROUP_FLAG=""
+      if [ -n "$IDRAC_GROUP" ]; then
+        GROUP_FLAG="--group $IDRAC_GROUP"
+      fi
+      python main.py --verbose $GROUP_FLAG export
     - echo "--- Listing exported files ---"
     - ls -lh templates/
   artifacts:
@@ -94,20 +107,26 @@ export_template:
 
 import_template:
   stage: import
-  needs:
-    - job: export_template
-      artifacts: true
   script:
     - echo "--- Importing golden template to target iDRACs ---"
     - |
-      # Find the most recent exported template
-      TEMPLATE_FILE=$(ls -t templates/scp_*.xml templates/scp_*.json 2>/dev/null | head -1)
-      if [ -z "$TEMPLATE_FILE" ]; then
-        echo "ERROR: No exported template found in templates/"
-        exit 1
+      GROUP_FLAG=""
+      if [ -n "$IDRAC_GROUP" ]; then
+        GROUP_FLAG="--group $IDRAC_GROUP"
       fi
-      echo "Using template: $TEMPLATE_FILE"
-      python main.py --verbose import "$TEMPLATE_FILE"
+      # If groups are configured with template paths, just run import directly.
+      # For legacy mode, find the most recent exported template.
+      if python -c "import yaml; c=yaml.safe_load(open('$IDRAC_CONFIG_FILE')); exit(0 if 'groups' in c else 1)" 2>/dev/null; then
+        python main.py --verbose $GROUP_FLAG import
+      else
+        TEMPLATE_FILE=$(ls -t templates/scp_*.xml templates/scp_*.json 2>/dev/null | head -1)
+        if [ -z "$TEMPLATE_FILE" ]; then
+          echo "ERROR: No exported template found in templates/"
+          exit 1
+        fi
+        echo "Using template: $TEMPLATE_FILE"
+        python main.py --verbose import "$TEMPLATE_FILE"
+      fi
   rules:
     - if: $CI_COMMIT_BRANCH
       when: manual
@@ -120,7 +139,12 @@ apply_template:
   stage: import
   script:
     - echo "--- Full apply: export from source, import to all targets ---"
-    - python main.py --verbose apply
+    - |
+      GROUP_FLAG=""
+      if [ -n "$IDRAC_GROUP" ]; then
+        GROUP_FLAG="--group $IDRAC_GROUP"
+      fi
+      python main.py --verbose $GROUP_FLAG apply
     - echo "--- Listing exported files ---"
     - ls -lh templates/
   artifacts:
