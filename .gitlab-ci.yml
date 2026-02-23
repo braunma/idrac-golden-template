@@ -29,13 +29,14 @@ variables:
 default:
   image: python:3.11-slim
   before_script:
-    - echo "==========================================="
-    - echo "Job: $CI_JOB_NAME"
-    - echo "Pipeline: $CI_PIPELINE_ID"
-    - echo "Branch: $CI_COMMIT_REF_NAME"
-    - echo "Runner: $CI_RUNNER_DESCRIPTION"
-    - echo "==========================================="
-    - pip install --quiet -r requirements.txt
+    - |
+      echo "==========================================="
+      echo "Job: $CI_JOB_NAME"
+      echo "Pipeline: $CI_PIPELINE_ID"
+      echo "Branch: $CI_COMMIT_REF_NAME"
+      echo "Runner: $CI_RUNNER_DESCRIPTION"
+      echo "==========================================="
+      pip install --quiet -r requirements.txt
   cache:
     key: "$CI_COMMIT_REF_SLUG"
     paths:
@@ -138,15 +139,18 @@ import_template:
 apply_template:
   stage: import
   script:
-    - echo "--- Full apply: export from source, import to all targets ---"
     - |
+      echo '--- Full apply: export from source, import to all targets ---'
+
       GROUP_FLAG=""
       if [ -n "$IDRAC_GROUP" ]; then
         GROUP_FLAG="--group $IDRAC_GROUP"
       fi
+
       python main.py --verbose $GROUP_FLAG apply
-    - echo "--- Listing exported files ---"
-    - ls -lh templates/
+
+      echo '--- Listing exported files ---'
+      ls -lh templates/
   artifacts:
     paths:
       - templates/
@@ -155,3 +159,5 @@ apply_template:
   rules:
     - if: $CI_COMMIT_BRANCH
       when: manual
+
+
