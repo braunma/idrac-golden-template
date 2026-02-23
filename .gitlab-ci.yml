@@ -10,17 +10,25 @@
 #   IDRAC_GROUP         - Target a specific server group (default: all groups)
 #   IDRAC_SOURCE_IP     - Source iDRAC IP           (legacy mode only)
 #   IDRAC_TARGET_IPS    - Comma-separated targets   (legacy mode only)
+#   CI_PUSH_TOKEN       - Project access token with write_repository scope;
+#                         required only when pipeline.commit_exports: true
 #
 # Pipeline stages:
-#   1. validate   — lint + connectivity check
-#   2. export     — export golden template from source iDRAC(s)
-#   3. import     — apply template to target iDRACs (manual trigger)
+#   1. validate   — lint + connectivity check  (manual)
+#   2. export     — export golden template     (manual override)
+#   3. import     — apply template to targets  (manual override)
+#   4. pipeline   — config-driven: runs whatever steps are set in config.yaml
+#
+# Recommended workflow:
+#   Configure pipeline.steps in config.yaml, then trigger "run_pipeline".
+#   Use the individual export/import jobs above for one-off manual overrides.
 # =============================================================================
 
 stages:
   - validate
   - export
   - import
+  - pipeline
 
 variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
@@ -160,4 +168,65 @@ apply_template:
     - if: $CI_COMMIT_BRANCH
       when: manual
 
+# ---------------------------------------------------------------------------
+# Config-driven pipeline: trigger this job to run whatever is in config.yaml
+# ---------------------------------------------------------------------------
+# Edit pipeline.steps in config.yaml to choose what happens:
+#   steps: [validate, export]          → snapshot configs, commit to git
+#   steps: [validate, import]          → apply committed templates to servers
+#   steps: [apply]                     → export fresh + immediately apply
+#
+# Set pipeline.commit_exports: true (and add CI_PUSH_TOKEN variable) to have
+# exported templates automatically committed back to the repository.
+# ---------------------------------------------------------------------------
 
+run_pipeline:
+  stage: pipeline
+  script:
+    - echo "--- Config-driven pipeline ---"
+    - |
+      GROUP_FLAG=""
+      if [ -n "$IDRAC_GROUP" ]; then
+        GROUP_FLAG="--group $IDRAC_GROUP"
+      fi
+      python main.py --verbose $GROUP_FLAG pipeline
+    - |
+      # Auto-commit exported templates when pipeline.commit_exports: true
+      COMMIT_EXPORTS=$(python -c "
+import yaml, sys
+try:
+    c = yaml.safe_load(open('${IDRAC_CONFIG_FILE}'))
+    print('true' if c.get('pipeline', {}).get('commit_exports', False) else 'false')
+except Exception:
+    print('false')
+")
+      if [ "$COMMIT_EXPORTS" = "true" ]; then
+        echo "--- Auto-committing exported templates ---"
+        if [ -z "$CI_PUSH_TOKEN" ]; then
+          echo "ERROR: CI_PUSH_TOKEN is not set. Add a project access token with"
+          echo "       write_repository scope as a masked CI/CD variable."
+          exit 1
+        fi
+        git config user.email "ci-bot@${CI_SERVER_HOST}"
+        git config user.name "GitLab CI"
+        git add templates/
+        if git diff --cached --quiet; then
+          echo "No template changes to commit."
+        else
+          git commit -m "ci: export golden templates [pipeline #${CI_PIPELINE_ID}]"
+          git push \
+            "https://oauth2:${CI_PUSH_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" \
+            "HEAD:${CI_COMMIT_REF_NAME}"
+          echo "Templates committed and pushed."
+        fi
+      fi
+    - echo "--- Listing templates/ ---"
+    - ls -lh templates/
+  artifacts:
+    paths:
+      - templates/
+    expire_in: 30 days
+    name: "pipeline-${CI_PIPELINE_ID}"
+  rules:
+    - if: $CI_COMMIT_BRANCH
+      when: manual

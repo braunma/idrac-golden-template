@@ -75,3 +75,37 @@ connection:
   poll_interval: 15
   # Maximum seconds to wait for a job to complete
   job_timeout: 1800
+
+# ==========================================================================
+# Pipeline automation
+# ==========================================================================
+# Controls what the "run_pipeline" CI job does when triggered.
+# Change this section to switch between workflows without touching .gitlab-ci.yml.
+#
+# Available steps (executed in order):
+#   validate  - test Redfish connectivity to all configured iDRACs
+#   export    - export SCP from source iDRAC(s) into the configured template file(s)
+#   import    - apply the committed template file(s) to all target iDRACs
+#   apply     - export + import in one shot (shorthand for both above)
+#
+# Workflow A — Export now, import later:
+#   1. Set steps: [validate, export] and run the pipeline to snapshot configs.
+#   2. Review/edit the exported templates in templates/, then commit them to git.
+#   3. Change steps to [validate, import] and run the pipeline to apply them.
+#
+# Workflow B — Full apply in one step:
+#   Set steps: [apply] to export a fresh snapshot and immediately apply it.
+#
+pipeline:
+  steps:
+    - validate
+    - export
+
+  # When true, exported templates are automatically committed and pushed back to
+  # the repository after an export step. This lets you snapshot iDRAC configs via
+  # the pipeline, review the diff in a merge request, and apply them later by
+  # changing steps to [import].
+  #
+  # Requires a GitLab project access token with write_repository scope stored as
+  # the CI_PUSH_TOKEN variable (Settings → CI/CD → Variables, masked + protected).
+  commit_exports: false
