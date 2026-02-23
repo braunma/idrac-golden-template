@@ -99,6 +99,36 @@ export_template:
         GROUP_FLAG="--group $IDRAC_GROUP"
       fi
       python main.py --verbose $GROUP_FLAG export
+    - |
+      # Auto-commit exported templates when pipeline.commit_exports: true
+      COMMIT_EXPORTS=$(python -c "
+import yaml, sys
+try:
+    c = yaml.safe_load(open('${IDRAC_CONFIG_FILE}'))
+    print('true' if c.get('pipeline', {}).get('commit_exports', False) else 'false')
+except Exception:
+    print('false')
+")
+      if [ "$COMMIT_EXPORTS" = "true" ]; then
+        echo "--- Auto-committing exported templates ---"
+        if [ -z "$GL_TOKEN" ]; then
+          echo "ERROR: GL_TOKEN is not set. Add a project access token with"
+          echo "       write_repository scope as a masked CI/CD variable."
+          exit 1
+        fi
+        git config user.email "ci-bot@${CI_SERVER_HOST}"
+        git config user.name "GitLab CI"
+        git add templates/
+        if git diff --cached --quiet; then
+          echo "No template changes to commit."
+        else
+          git commit -m "ci: export golden templates [pipeline #${CI_PIPELINE_ID}]"
+          git push \
+            "https://oauth2:${GL_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" \
+            "HEAD:${CI_COMMIT_REF_NAME}"
+          echo "Templates committed and pushed."
+        fi
+      fi
     - echo "--- Listing exported files ---"
     - ls -lh templates/
   artifacts:
@@ -176,7 +206,7 @@ apply_template:
 #   steps: [validate, import]          → apply committed templates to servers
 #   steps: [apply]                     → export fresh + immediately apply
 #
-# Set pipeline.commit_exports: true (and add CI_PUSH_TOKEN variable) to have
+# Set pipeline.commit_exports: true (and add GL_TOKEN variable) to have
 # exported templates automatically committed back to the repository.
 # ---------------------------------------------------------------------------
 
