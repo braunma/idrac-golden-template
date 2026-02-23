@@ -11,6 +11,8 @@ Usage:
     python main.py apply --group NAME          Export then import for a specific group
     python main.py validate                    Validate config and connectivity
     python main.py validate --group NAME       Validate a specific group only
+    python main.py pipeline                    Run steps defined in config.yaml pipeline.steps
+    python main.py pipeline --group NAME       Run configured steps for a specific group
 
 Environment variables (override config.yaml):
     IDRAC_USERNAME      iDRAC username
@@ -256,6 +258,66 @@ def cmd_validate(config: dict, group_name: str | None = None) -> None:
     print("\nAll iDRACs reachable.")
 
 
+def cmd_pipeline(config: dict, group_name: str | None = None) -> None:
+    """Execute pipeline steps as configured in config.pipeline.steps.
+
+    Steps are run in the order listed. Available steps:
+      validate  — test Redfish connectivity
+      export    — export SCP from source iDRAC(s)
+      import    — apply committed template(s) to target iDRACs
+      apply     — export + import in one shot
+    """
+    pipeline_cfg = config.get("pipeline", {})
+    steps = pipeline_cfg.get("steps", [])
+
+    if not steps:
+        print("INFO: pipeline.steps is empty — nothing to do.")
+        print("  Add steps to config.yaml, e.g.: steps: [validate, export]")
+        return
+
+    valid_steps = {"validate", "export", "import", "apply"}
+    for step in steps:
+        if step not in valid_steps:
+            print(
+                f"ERROR: Unknown pipeline step '{step}'. "
+                f"Valid steps: {', '.join(sorted(valid_steps))}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    print(f"Pipeline steps: {' → '.join(steps)}")
+
+    exported_files: dict[str, str] = {}
+    for step in steps:
+        print(f"\n{'=' * 60}")
+        print(f"STEP: {step.upper()}")
+        print(f"{'=' * 60}")
+
+        if step == "validate":
+            cmd_validate(config, group_name=group_name)
+
+        elif step == "export":
+            exported_files = cmd_export(config, group_name=group_name)
+            print(f"\nExported {len(exported_files)} template(s).")
+
+        elif step == "import":
+            ok = cmd_import(config, group_name=group_name)
+            if not ok:
+                sys.exit(1)
+
+        elif step == "apply":
+            exported_files = cmd_export(config, group_name=group_name)
+            all_ok = True
+            for name, filepath in exported_files.items():
+                ok = cmd_import(config, scp_filepath=filepath, group_name=name)
+                if not ok:
+                    all_ok = False
+            if not all_ok:
+                sys.exit(1)
+
+    print(f"\nAll {len(steps)} pipeline step(s) completed.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="iDRAC Golden Template — Export/Import Server Configuration Profiles via Redfish",
@@ -276,6 +338,7 @@ def main() -> None:
 
     sub.add_parser("apply", help="Export from source, then import to all targets")
     sub.add_parser("validate", help="Validate config and connectivity")
+    sub.add_parser("pipeline", help="Run steps defined in config.yaml (pipeline.steps)")
 
     args = parser.parse_args()
     setup_logging(verbose=args.verbose)
@@ -305,6 +368,9 @@ def main() -> None:
 
     elif args.command == "validate":
         cmd_validate(config, group_name=args.group)
+
+    elif args.command == "pipeline":
+        cmd_pipeline(config, group_name=args.group)
 
 
 if __name__ == "__main__":
