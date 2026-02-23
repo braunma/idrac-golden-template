@@ -101,14 +101,7 @@ export_template:
       python main.py --verbose $GROUP_FLAG export
     - |
       # Auto-commit exported templates when pipeline.commit_exports: true
-      COMMIT_EXPORTS=$(python -c "
-import yaml, sys
-try:
-    c = yaml.safe_load(open('${IDRAC_CONFIG_FILE}'))
-    print('true' if c.get('pipeline', {}).get('commit_exports', False) else 'false')
-except Exception:
-    print('false')
-")
+      COMMIT_EXPORTS=$(python -c "import yaml; d=yaml.safe_load(open('${IDRAC_CONFIG_FILE}')); print('true' if (d or {}).get('pipeline',{}).get('commit_exports',False) else 'false')" 2>/dev/null || echo 'false')
       if [ "$COMMIT_EXPORTS" = "true" ]; then
         echo "--- Auto-committing exported templates ---"
         if [ -z "$GL_TOKEN" ]; then
@@ -222,14 +215,7 @@ run_pipeline:
       python main.py --verbose $GROUP_FLAG pipeline
     - |
       # Auto-commit exported templates when pipeline.commit_exports: true
-      COMMIT_EXPORTS=$(python -c "
-import yaml, sys
-try:
-    c = yaml.safe_load(open('${IDRAC_CONFIG_FILE}'))
-    print('true' if c.get('pipeline', {}).get('commit_exports', False) else 'false')
-except Exception:
-    print('false')
-")
+      COMMIT_EXPORTS=$(python -c "import yaml; d=yaml.safe_load(open('${IDRAC_CONFIG_FILE}')); print('true' if (d or {}).get('pipeline',{}).get('commit_exports',False) else 'false')" 2>/dev/null || echo 'false')
       if [ "$COMMIT_EXPORTS" = "true" ]; then
         echo "--- Auto-committing exported templates ---"
         if [ -z "$GL_TOKEN" ]; then
